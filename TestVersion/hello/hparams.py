@@ -1,13 +1,14 @@
 import tensorflow as tf
 
 basic_params={
-    'data_dir':'./data/',
-    'fname_x':'ij_hello_1.wav',
-    'fname_y':'yr_hello_1.wav',
+    'base_dir':'input/',
+    'data_dir':'data/',
+    'target_dir':'target/',
     'rate_hz':22050,
-    'fft_size':2048,
-    'hopsamp':2048//8,
-    'iterations':50,
+    'fft_size':1024,
+    'hopsamp':1024//8,
+    'iterations':100,
+    'split_range':5,
 }
 
 hparams = tf.contrib.training.HParams(**basic_params)

@@ -326,7 +326,7 @@ def save_audio_to_file(x, sample_rate, outfile='out.wav',outputdir='output'):
     for i in range(len(x)):
         cur_samp = int(round(x[i]))
         data.append(cur_samp)
-    path = os.join(outputdir,outfile)
+    path = os.path.join(outputdir,outfile)
     f = wave.open(path, 'w')
     f.setparams((1, 2, sample_rate, 0, "NONE", "Uncompressed"))
     f.writeframes(data.tostring())

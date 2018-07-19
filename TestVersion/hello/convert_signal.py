@@ -14,18 +14,17 @@ from hparams import basic_params as b_params
 import os
 
 tf.logging.set_verbosity(tf.logging.INFO)
-
+base_dir=b_params['base_dir']
 data_dir=b_params['data_dir']
-fname_x = os.path.join(data_dir,'ij_hello_1.wav')
-fname_x_2 = os.path.join(data_dir,'ij_hello_2.wav')
-fname_y = os.path.join(data_dir,'yr_hello_1.wav')
+target_dir = b_params['target_dir']
 rate_hz = b_params['rate_hz']
 fft_size = b_params['fft_size']
 hopsamp = b_params['hopsamp']
 iterations=b_params['iterations']
+split_range=b_params['split_range']
 
-def get_stft_modified(fname,hopsamp,rate_hz=44100,
-                      fft_size=2048,enableMel=False,enableFilter=False):
+def get_stft_modified(fname,hopsamp=hopsamp,rate_hz=rate_hz,
+                      fft_size=fft_size,enableMel=False,enableFilter=False):
 
     input_signal = audio_utilities.get_signal(fname,expected_fs=rate_hz)
     stft_full = audio_utilities.stft_for_reconstruction(input_signal, 
@@ -38,6 +37,8 @@ def get_stft_modified(fname,hopsamp,rate_hz=44100,
     stft_modified = stft_mag
 
     print('[*]stft_modified : ' , stft_modified.shape)
+
+    '''
     imshow(stft_mag.T**0.125, origin='lower', cmap=cm.hot, aspect='auto',
            interpolation='nearest')
     colorbar()
@@ -45,10 +46,11 @@ def get_stft_modified(fname,hopsamp,rate_hz=44100,
     xlabel('time index')
     ylabel('frequency bin index')
     savefig(fname+'unmodified_spectrogram.png', dpi=150)
+    '''
 
     if enableMel:
-        min_freq_hz = 70
-        max_freq_hz = 8000
+        min_freq_hz = 30
+        max_freq_hz = 1000
         mel_bin_count = 200
         linear_bin_count = 1 + fft_size//2
         filterbank = audio_utilities.make_mel_filterbank(min_freq_hz, 
@@ -93,22 +95,27 @@ def get_wav_from_stft(stft_modified,rate_hz,modified_scale,fft_size,
 
     return stft_modified_scaled
 
-def autoencoder(x_train, x_test, data_dims=None, encoding_dim=512,iterations=128):
+def autoencoder(x,y, data_dims=None, iterations=128):
 
     if data_dims==None:
-        data_dims = x_train.shape[1]
+        data_dims = x.shape[1]
 
     input_img = Input(shape=(data_dims,))
     model = Sequential()
-    model.add(Dense(256, input_dim=data_dims))
-    model.add(Dense(256,activation='tanh'))
+    model.add(Dense(512, input_dim=data_dims))
+    model.add(Dense(512,activation='tanh'))
+    model.add(Dense(512,activation='tanh'))
+    model.add(Dense(512,activation='tanh'))
+    model.add(Dense(512,activation='tanh'))
+    model.add(Dense(512,activation='tanh'))
     model.add(Dense(data_dims, activation='relu'))
     model.compile(optimizer='adam',loss='binary_crossentropy')
-    model.fit(x_train,x_test,nb_epoch=iterations,shuffle=False,validation_data=(x_train,x_test))
+    model.fit(x,y,nb_epoch=iterations,
+              shuffle=False,validation_data=(x,y))
 
     return model
 
-def split_data(x,split_range):
+def split_data(x,split_range=split_range):
 
     split_num = x.shape[0]//split_range+1
 
@@ -121,65 +128,49 @@ def split_data(x,split_range):
             yield x[idx_start:idx_end,:]
 
 
-def train(split_range,x,y):
-
-    result = np.zeros((x.shape)) 
-    model_list = []
-
-    for x,y in zip(split_data(x=x,split_range=split_range),
-                   split_data(x=y,split_range=split_range)):
-
-        model = autoencoder(x,y,iterations=iterations)
-        model_list.append(model)
-
-    return model_list
-
 def test(split_range,x,model_list):
-    result = []
-    for x,model in zip(split_data(x=x,split_range=split_range), model_list):
-        result.append(model.predict(x))
 
     return np.array(np.concatenate([t for t in result]))
 
 
+def make_dataset(data_path):
+    dataset=[]
+    for x in data_path:
+        x_stft,_ = get_stft_modified(x)
+        dataset.append(x_stft)
+    dataset = np.array(dataset)
+    dataset = dataset.reshape(-1,dataset.shape[2])
+    return dataset
+
 if __name__=='__main__':
 
-    x_stft,x_scale = get_stft_modified(fname=fname_x,
-                                       rate_hz=rate_hz,
-                                       fft_size=fft_size,
-                                       hopsamp=hopsamp)
-
-    y_stft,y_scale = get_stft_modified(fname=fname_y,
-                                       rate_hz=rate_hz,
-                                       fft_size=fft_size,
-                                       hopsamp=hopsamp)
-
-    x_stft2,x_scale2 = get_stft_modified(fname=fname_x_2,
-                                       rate_hz=rate_hz,
-                                       fft_size=fft_size,
-                                       hopsamp=hopsamp)
-
-    print('[*]x_stft_modified : ' , x_stft.shape)#(199,1025)
-    print('[*]x_scaled : ' , x_scale)
-    print('[*]y_stft_modified : ' , y_stft.shape)#(199,1025)
-    print('[*]y_scaled : ' , y_scale)
-
+    data = os.listdir(os.path.join(base_dir,data_dir))
+    target = os.listdir(os.path.join(base_dir,target_dir))
+    
+    train_x = []
+    train_y = []
     split_range=5
+    
+    train_x = make_dataset([os.path.join(base_dir,data_dir,x) for x in data])
+    train_y = make_dataset([os.path.join(base_dir,target_dir,y) for y in target])
 
-    model_list = train(x=x_stft,y=y_stft,split_range=split_range)
+    rand_idx = np.random.permutation(train_x.shape[0])
+    train_x =train_x[rand_idx]
+    train_y =train_y[rand_idx]
 
-    ##test_1
-    result1 = test(x=x_stft,split_range=split_range, model_list=model_list)
-    get_wav_from_stft(stft_modified=result1,
-                      modified_scale =x_scale, 
+    model= autoencoder(x=train_x,y=train_y,iterations=10)
+    
+    y,s = get_stft_modified(fname='./input/data/1.wav')
+    result= model.predict(y)
+    get_wav_from_stft(stft_modified=result,
+                      modified_scale =s, 
                       rate_hz=rate_hz,
                       fft_size=fft_size,
                       hopsamp=hopsamp,
                       iterations=iterations,
                       outfile="output_test1.wav")
-    ##test_2
-
-    result2 = test(x=x_stft2,split_range=split_range)
+    '''
+    result2 = test(x=x_stft2,split_range=split_range,model_list=model_list)
     get_wav_from_stft(stft_modified=result2,
                       modified_scale =x_scale2, 
                       rate_hz=rate_hz,
@@ -187,3 +178,4 @@ if __name__=='__main__':
                       hopsamp=hopsamp,
                       iterations=iterations,
                       outfile="output_test2.wav")
+    '''
